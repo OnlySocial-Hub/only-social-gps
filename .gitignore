@@ -1,0 +1,18 @@
+# Build output — rebuilt from source by ./build.sh
+dist/
+.build/
+*.app
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# macOS / editors
+.DS_Store
+._*
+.vscode/
+.idea/
+
+# Design review screenshots — not needed to build/run
+Design/snapshots/
