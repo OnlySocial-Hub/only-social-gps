@@ -97,6 +97,7 @@ final class AppModel {
     @ObservationIgnored private var geocodeQueue: [String] = []
     @ObservationIgnored private var geocodeBusy = false
     @ObservationIgnored private var farmNames: [String: String] = [:]
+    @ObservationIgnored private var farmNameTimer: Timer? = nil
     @ObservationIgnored private var lastFitKey = ""
     @ObservationIgnored private var reapplyPending = false
     @ObservationIgnored private var hasSentSetAll = false
@@ -217,6 +218,12 @@ final class AppModel {
 
     func start() {
         loadFarmNamesInBackground()
+        // Re-read the phone bot's names periodically so a rename over there shows
+        // here without relaunching. Cheap: a small JSON file next door.
+        farmNameTimer?.invalidate()
+        farmNameTimer = Timer.scheduledTimer(withTimeInterval: 20, repeats: true) { _ in
+            Task { @MainActor in AppModel.shared.loadFarmNamesInBackground() }
+        }
         if isSnapshot {
             if Env.useMock {
                 let seed = SnapshotSeed.state()
@@ -277,7 +284,10 @@ final class AppModel {
         farmNames = names
         guard !Env.useMock, !names.isEmpty else { return }
         var changed = false
-        for (udid, name) in names where records[udid] != nil && records[udid]!.nickname.isEmpty {
+        // The phone bot is the source of truth for names — override, don't just
+        // fill blanks, so a rename over there updates here too. A phone the bot
+        // hasn't named (not in the file) is left as it is, never cleared.
+        for (udid, name) in names where records[udid] != nil && !name.isEmpty && records[udid]!.nickname != name {
             records[udid]!.nickname = name
             changed = true
         }
@@ -500,8 +510,8 @@ final class AppModel {
         let now = Date().timeIntervalSince1970
         for d in list {
             var r = records[d.udid] ?? PhoneRecord(udid: d.udid)
-            if records[d.udid] == nil, let name = farmNames[d.udid] { r.nickname = name }
-            if r.nickname.isEmpty, let name = farmNames[d.udid] { r.nickname = name }
+            // Keep the name in step with the phone bot (source of truth).
+            if let name = farmNames[d.udid], !name.isEmpty, r.nickname != name { r.nickname = name }
             r.model = d.marketingName
             r.ios = d.ios ?? r.ios
             r.lastSeenAt = now
